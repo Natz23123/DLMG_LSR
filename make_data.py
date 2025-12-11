@@ -9,7 +9,7 @@ cap = cv.VideoCapture(0)
 cap.set(cv.CAP_PROP_FRAME_WIDTH, 640)
 cap.set(cv.CAP_PROP_FRAME_HEIGHT, 360)
 
-DATA_DIR = "data"
+DATA_DIR = "photo_data"
 
 while True:
     ret, img = cap.read()

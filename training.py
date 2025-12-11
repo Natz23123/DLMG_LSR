@@ -1,39 +1,45 @@
+import json
 import torch
+from torch.utils.data import Dataset, DataLoader
+from model_cnn import LandmarkClassifier
 import torch.nn as nn
-from torchvision import datasets, transforms
-from torch.utils.data import DataLoader
-from model_cnn import HandSignCNN
+import torch.optim as optim
 
 device = "cuda" if torch.cuda.is_available() else "cpu"
 
-transform = transforms.Compose([
-    transforms.Resize((64, 64)),
-    transforms.RandomHorizontalFlip(0.3),
-    transforms.RandomRotation(10),
-    transforms.ToTensor()
-])
+class LandmarksDS(Dataset):
+    def __init__(self, json_path):
+        with open(json_path) as f:
+            self.data = json.load(f)
+        
+        #mapam A,B,C -> 0,1,2,...
+        letters = sorted(list({d["class"] for d in self.data}))
+        self.class_to_id = {c: i for i, c in enumerate(letters)}
 
-data = datasets.ImageFolder("data/", transform=transform)
-loader = DataLoader(data, batch_size=32, shuffle=True)
+    def __len__(self):
+        return len(self.data)
 
-model = HandSignCNN(num_classes=len(data.classes)).to(device)
+    def __getitem__(self, idx):
+        item = self.data[idx]
+        x = torch.tensor(item["landmarks"], dtype=torch.float32)
+        y = torch.tensor(self.class_to_id[item["class"]])
+        return x, y
+ds = LandmarksDS("data_landmarks.json")
+dl = DataLoader(ds, batch_size=8, shuffle=True)
 
-criterion = nn.CrossEntropyLoss()
-optimizer = torch.optim.Adam(model.parameters(), lr=1e-3)
+num_classes = len(ds.class_to_id)
+model = LandmarkClassifier(num_classes)
 
-for epoch in range(10):
-    for imgs, labels in loader:
-        imgs, labels = imgs.to(device), labels.to(device)
+loss_fn = nn.CrossEntropyLoss()
+opt = optim.Adam(model.parameters(), lr=0.001)
 
-        optimizer.zero_grad()
-        logits = model(imgs)
-        loss = criterion(logits, labels)
+for epoch in range(50):
+    for x, y in dl:
+        opt.zero_grad()
+        out = model(x)
+        loss = loss_fn(out, y)
         loss.backward()
-        optimizer.step()
+        opt.step()
+    print(epoch, loss.item())
 
-torch.save({
-    "model_state": model.state_dict(),
-    "classes": data.classes
-}, "handsign_model.pt")
-
-print("Model saved as handsign_model.pt")
+torch.save(model.state_dict(), "model.pth")
