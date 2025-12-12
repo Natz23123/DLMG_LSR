@@ -2,6 +2,26 @@ import cv2 as cv
 import time
 import mediapipe as mp
 import numpy as np
+import json
+from model_mlp import LandmarkClassifier
+import torch
+
+with open("data_landmarks.json") as f:
+    data = json.load(f)
+
+letters = sorted(list({d["class"] for d in data}))
+class_to_id = {c: i for i, c in enumerate(letters)}
+id_to_class = {v: k for k, v in class_to_id.items()}
+
+model = LandmarkClassifier(len(letters))
+model.load_state_dict(torch.load("model.pth"))
+model.eval()
+
+def extract_landmarks(hand_landmarks):
+    vect = []
+    for p in hand_landmarks.landmark:
+        vect.extend([p.x, p.y, p.z])
+    return vect
 
 cap = cv.VideoCapture(0)
 cap.set(cv.CAP_PROP_FRAME_WIDTH, 640)
@@ -11,14 +31,6 @@ mpHands = mp.solutions.hands
 hands = mpHands.Hands(
     max_num_hands=2,
     model_complexity=0,
-    min_detection_confidence=0.5,
-    min_tracking_confidence=0.5
-)
-
-mpFaceMesh = mp.solutions.face_mesh
-face = mpFaceMesh.FaceMesh(
-    max_num_faces=1,
-    refine_landmarks=False,
     min_detection_confidence=0.5,
     min_tracking_confidence=0.5
 )
@@ -37,12 +49,20 @@ while True:
     face_res  = face.process(rgb)
 
     if hands_res.multi_hand_landmarks:
-        for h in hands_res.multi_hand_landmarks:
-            mpDraw.draw_landmarks(img, h, mpHands.HAND_CONNECTIONS)
+        hand = hands_res.multi_hand_landmarks[0]
+        mpDraw.draw_landmarks(img, hand, mpHands.HAND_CONNECTIONS)
 
-    if face_res.multi_face_landmarks:
-        lm = face_res.multi_face_landmarks[0].landmark
-        mouth_open = abs(lm[13].y - lm[14].y)
+        vect = extract_landmarks(hand)
+        vect = torch.tensor(vect, dtype=torch.float32)
+
+        with torch.no_grad():
+            out = model(vect)
+            pred = out.argmax().item()
+
+        letter = id_to_class[pred]
+
+        cv.putText(img, f"{letter}", (10, 130),
+               cv.FONT_HERSHEY_SIMPLEX, 2, (0, 255, 0), 3)
 
     now = time.time()
     fps = 1 / (now - prev) if prev else 0

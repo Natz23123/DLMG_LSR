@@ -13,4 +13,4 @@ class LandmarkClassifier(nn.Module):
         )
 
     def forward(self, x):
-        return self.classifier(self.features(x))
+        return self.net(x)

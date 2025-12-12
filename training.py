@@ -1,7 +1,7 @@
 import json
 import torch
 from torch.utils.data import Dataset, DataLoader
-from model_cnn import LandmarkClassifier
+from model_mlp import LandmarkClassifier
 import torch.nn as nn
 import torch.optim as optim
 
@@ -24,6 +24,7 @@ class LandmarksDS(Dataset):
         x = torch.tensor(item["landmarks"], dtype=torch.float32)
         y = torch.tensor(self.class_to_id[item["class"]])
         return x, y
+    
 ds = LandmarksDS("data_landmarks.json")
 dl = DataLoader(ds, batch_size=8, shuffle=True)
 
