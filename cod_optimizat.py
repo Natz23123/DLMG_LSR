@@ -14,7 +14,7 @@ class_to_id = {c: i for i, c in enumerate(letters)}
 id_to_class = {v: k for k, v in class_to_id.items()}
 
 model = LandmarkClassifier(len(letters))
-model.load_state_dict(torch.load("model.pth"))
+model.load_state_dict(torch.load("model.pth", map_location="cpu"))
 model.eval()
 
 def angle(v1, v2):
@@ -84,15 +84,24 @@ hands = mpHands.Hands(
 mpDraw = mp.solutions.drawing_utils
 
 prev = 0
+paused = False
+frozen_img = None
 while True:
-    ret, img = cap.read()
-    if not ret:
-        break
+    if not paused:
+        ret, img = cap.read()
+        if not ret:
+            break
+        frozen_img = img.copy()
+    else:
+        if frozen_img is None:
+            continue
+        img = frozen_img.copy()
 
     rgb = cv.cvtColor(img, cv.COLOR_BGR2RGB)
 
     hands_res = hands.process(rgb)
 
+    top5_lines = None
     if hands_res.multi_hand_landmarks:
         hand = hands_res.multi_hand_landmarks[0]
         mpDraw.draw_landmarks(img, hand, mpHands.HAND_CONNECTIONS)
@@ -103,12 +112,31 @@ while True:
         with torch.no_grad():
             print(vect.shape)
             out = model(vect)
-            pred = out.argmax().item()
+            probs = torch.softmax(out, dim=0)
+            pred = probs.argmax().item()
+
+        if paused:
+            k = min(5, probs.numel())
+            vals, idxs = torch.topk(probs, k=k)
+            top5_lines = [
+                f"{i+1}. {id_to_class[idxs[i].item()]}: {vals[i].item()*100:.1f}%"
+                for i in range(k)
+            ]
 
         letter = id_to_class[pred]
 
         cv.putText(img, f"{letter}", (10, 130),
                cv.FONT_HERSHEY_SIMPLEX, 2, (0, 255, 0), 3)
+
+    if paused:
+        cv.putText(img, "PAUSED (press P to resume)", (10, 30),
+                   cv.FONT_HERSHEY_SIMPLEX, 0.7, (0, 255, 255), 2)
+        if top5_lines:
+            y = 60
+            for line in top5_lines:
+                cv.putText(img, line, (10, y),
+                           cv.FONT_HERSHEY_SIMPLEX, 0.7, (255, 255, 255), 2)
+                y += 26
 
     now = time.time()
     fps = 1 / (now - prev) if prev else 0
@@ -119,7 +147,10 @@ while True:
 
     cv.imshow("DLMG_LSR", img)
 
-    if cv.waitKey(1) & 0xFF == ord("q"):
+    key = cv.waitKey(1) & 0xFF
+    if key in (ord("p"), ord("P")):
+        paused = not paused
+    elif key == ord("q"):
         break
 
 cap.release()
