@@ -17,11 +17,57 @@ model = LandmarkClassifier(len(letters))
 model.load_state_dict(torch.load("model.pth"))
 model.eval()
 
+def angle(v1, v2):
+    v1 = np.array(v1)
+    v2 = np.array(v2)
+    cos = np.dot(v1, v2) / (np.linalg.norm(v1) * np.linalg.norm(v2))
+    return np.arccos(np.clip(cos, -1.0, 1.0))
+
+
 def extract_landmarks(hand_landmarks):
+    lm = hand_landmarks.landmark
     vect = []
-    for p in hand_landmarks.landmark:
+
+    for p in lm:
         vect.extend([p.x, p.y, p.z])
+
+    # ---- unghi thumb vs palm ----
+    WRIST = lm[0]
+    THUMB_MCP = lm[2]
+    THUMB_TIP = lm[4]
+    INDEX_MCP = lm[5]
+
+    v_thumb = [
+        THUMB_TIP.x - THUMB_MCP.x,
+        THUMB_TIP.y - THUMB_MCP.y,
+        THUMB_TIP.z - THUMB_MCP.z
+    ]
+
+    v_palm = [
+        INDEX_MCP.x - WRIST.x,
+        INDEX_MCP.y - WRIST.y,
+        INDEX_MCP.z - WRIST.z
+    ]
+
+    angle_thumb_palm = angle(v_thumb, v_palm)
+
+    # ---- unghi cârlig ----
+    THUMB_CMC = lm[1]
+
+    v1 = [
+        THUMB_MCP.x - THUMB_CMC.x,
+        THUMB_MCP.y - THUMB_CMC.y,
+        THUMB_MCP.z - THUMB_CMC.z
+    ]
+
+    v2 = v_thumb
+
+    angle_thumb_bend = angle(v1, v2)
+
+    vect.extend([angle_thumb_palm, angle_thumb_bend])
+
     return vect
+
 
 cap = cv.VideoCapture(0)
 cap.set(cv.CAP_PROP_FRAME_WIDTH, 640)
@@ -52,9 +98,10 @@ while True:
         mpDraw.draw_landmarks(img, hand, mpHands.HAND_CONNECTIONS)
 
         vect = extract_landmarks(hand)
-        vect = torch.tensor(vect, dtype=torch.float32)
+        vect = torch.tensor(vect, dtype=torch.float32).unsqueeze(0)
 
         with torch.no_grad():
+            print(vect.shape)
             out = model(vect)
             pred = out.argmax().item()
 
