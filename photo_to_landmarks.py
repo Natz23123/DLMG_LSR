@@ -36,4 +36,4 @@ for letter in os.listdir(DATA_DIR):
         dataset.append({"class": letter, "landmarks": vect})
 
 with open(output_file, "w") as f:
-    json.dump(dataset, f)
+    json.dump(dataset, f, indent=4)
