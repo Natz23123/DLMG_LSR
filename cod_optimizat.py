@@ -112,12 +112,12 @@ while True:
         with torch.no_grad():
             print(vect.shape)
             out = model(vect)
-            probs = torch.softmax(out, dim=0)
-            pred = probs.argmax().item()
+            probs = torch.softmax(out, dim=1)
+            pred = probs.argmax(dim=1).item()
 
         if paused:
             k = min(5, probs.numel())
-            vals, idxs = torch.topk(probs, k=k)
+            vals, idxs = torch.topk(probs[0], k=k)
             top5_lines = [
                 f"{i+1}. {id_to_class[idxs[i].item()]}: {vals[i].item()*100:.1f}%"
                 for i in range(k)
