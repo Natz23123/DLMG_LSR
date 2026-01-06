@@ -46,7 +46,6 @@ while True:
     rgb = cv.cvtColor(img, cv.COLOR_BGR2RGB)
 
     hands_res = hands.process(rgb)
-    face_res  = face.process(rgb)
 
     if hands_res.multi_hand_landmarks:
         hand = hands_res.multi_hand_landmarks[0]
