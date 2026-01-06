@@ -60,12 +60,12 @@ for letter in os.listdir(DATA_DIR):
         angle_thumb_palm = angle(v_thumb, v_palm)
         vect.append(angle_thumb_palm)
 
-        THUMB_CMC = lm.landmark[1]
+        THUMB_IP = lm.landmark[3]
 
         v1 = [
-            THUMB_MCP.x - THUMB_CMC.x,
-            THUMB_MCP.y - THUMB_CMC.y,
-            THUMB_MCP.z - THUMB_CMC.z
+            THUMB_IP.x - THUMB_MCP.x,
+            THUMB_IP.y - THUMB_MCP.y,
+            THUMB_IP.z - THUMB_MCP.z
         ]
 
         v2 = [
