@@ -4,6 +4,7 @@ import mediapipe as mp
 import numpy as np
 import os
 from datetime import datetime
+from collections import deque
 
 cap = cv.VideoCapture(0)
 cap.set(cv.CAP_PROP_FRAME_WIDTH, 640)

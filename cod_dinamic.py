@@ -1,56 +1,34 @@
 import cv2 as cv
-import time
 import mediapipe as mp
 import numpy as np
-import json
-from model_vectori import LandmarkClassifier
 import torch
 from collections import deque
+from model_dynamic import LSTMClassifier  # modelul LSTM pentru dinamice
 
-with open("data_all.json") as f:
-    data = json.load(f)
+def extract_data(lm):
+    WRIST = lm.landmark[0]
+    THUMB_CMC = lm.landmark[1]
+    THUMB_MCP = lm.landmark[2]
+    THUMB_IP = lm.landmark[3]
+    THUMB_TIP = lm.landmark[4]
+    INDEX_MCP = lm.landmark[5]
+    INDEX_PIP = lm.landmark[6]
+    INDEX_DIP = lm.landmark[7]
+    INDEX_TIP = lm.landmark[8]
+    MIDDLE_MCP = lm.landmark[9]
+    MIDDLE_PIP = lm.landmark[10]
+    MIDDLE_DIP = lm.landmark[11]
+    MIDDLE_TIP = lm.landmark[12]
+    RING_MCP = lm.landmark[13]
+    RING_PIP = lm.landmark[14]
+    RING_DIP = lm.landmark[15]
+    RING_TIP = lm.landmark[16]
+    PINKY_MCP = lm.landmark[17]
+    PINKY_PIP = lm.landmark[18]
+    PINKY_DIP = lm.landmark[19]
+    PINKY_TIP = lm.landmark[20]
 
-letters = sorted(list({d["class"] for d in data}))
-class_to_id = {c: i for i, c in enumerate(letters)}
-id_to_class = {v: k for k, v in class_to_id.items()}
-
-model = LandmarkClassifier(len(letters))
-model.load_state_dict(torch.load("model_vectori.pth", map_location="cpu"))
-model.eval()
-
-def angle(v1, v2):
-    v1 = np.array(v1)
-    v2 = np.array(v2)
-    cos = np.dot(v1, v2) / (np.linalg.norm(v1) * np.linalg.norm(v2))
-    return np.arccos(np.clip(cos, -1.0, 1.0))
-
-
-def extract_landmarks(hand_landmarks):
-    lm = hand_landmarks.landmark
-
-    WRIST = lm[0]
-    THUMB_CMC = lm[1]
-    THUMB_MCP = lm[2]
-    THUMB_IP = lm[3]
-    THUMB_TIP = lm[4]
-    INDEX_MCP = lm[5]
-    INDEX_PIP = lm[6]
-    INDEX_DIP = lm[7]
-    INDEX_TIP = lm[8]
-    MIDDLE_MCP = lm[9]
-    MIDDLE_PIP = lm[10]
-    MIDDLE_DIP = lm[11]
-    MIDDLE_TIP = lm[12]
-    RING_MCP = lm[13]
-    RING_PIP = lm[14]
-    RING_DIP = lm[15]
-    RING_TIP = lm[16]
-    PINKY_MCP = lm[17]
-    PINKY_PIP = lm[18]
-    PINKY_DIP = lm[19]
-    PINKY_TIP = lm[20]
-
-    landmarks = [p for p in lm]
+    landmarks = [p for p in lm.landmark]
 
     v1 = [
         THUMB_CMC.x - WRIST.x,
@@ -177,6 +155,7 @@ def extract_landmarks(hand_landmarks):
         MIDDLE_RING_SPREAD_ANGLE,
         RING_PINKY_SPREAD_ANGLE
     ]
+
     scale = np.linalg.norm(
         [
             MIDDLE_MCP.x - WRIST.x,
@@ -200,10 +179,25 @@ def extract_landmarks(hand_landmarks):
     for v in vect:
         all_data.extend(v)
     all_data.extend(angles)
-
     return all_data
 
+# --- CONFIGURARE ---
+SEQ_WINDOW = 15      # câte frame-uri în buffer pentru secvență
+THUMB_PINKY_DIST = 0.2  # prag pentru "mâna deschisă"
+DEVICE = "cpu"       # sau "cuda" dacă ai GPU
 
+# --- INIȚIALIZARE MODEL ---
+INPUT_SIZE = len(extract_data(some_hand_object))  # exact cum e la training
+HIDDEN_SIZE = 128  # cum ai folosit la training
+NUM_CLASSES = 2     # I și J
+
+dynamic_model = LSTMClassifier(INPUT_SIZE, HIDDEN_SIZE, NUM_CLASSES)
+dynamic_model.load_state_dict(torch.load("model_dynamic.pth", map_location="cpu"))
+dynamic_model.eval()
+
+id_to_class = {0: "I", 1: "J"}
+
+# --- INIȚIALIZARE CAMERA ---
 cap = cv.VideoCapture(0)
 cap.set(cv.CAP_PROP_FRAME_WIDTH, 640)
 cap.set(cv.CAP_PROP_FRAME_HEIGHT, 360)
@@ -218,82 +212,64 @@ hands = mpHands.Hands(
 
 mpDraw = mp.solutions.drawing_utils
 
-prev = 0
-paused = False
-frozen_img = None
+# --- BUFFER PENTRU SECVENȚE ---
+seq_buffer = deque(maxlen=SEQ_WINDOW)
 
-PROB_WINDOW = 7
-prob_buffer = deque(maxlen=PROB_WINDOW)
+# --- FUNCȚIE EXTRACȚIE VECTOR ---
+def extract_landmarks(hand_landmarks):
+    lm = hand_landmarks.landmark
+    vect = []
+    for p in lm:
+        vect.extend([p.x, p.y, p.z])
+    return np.array(vect, dtype=np.float32)
 
+# --- LOOP PRINCIPAL ---
 while True:
-    if not paused:
-        ret, img = cap.read()
-        if not ret:
-            break
-        frozen_img = img.copy()
-    else:
-        if frozen_img is None:
-            continue
-        img = frozen_img.copy()
+    ret, img = cap.read()
+    if not ret:
+        break
 
     rgb = cv.cvtColor(img, cv.COLOR_BGR2RGB)
+    results = hands.process(rgb)
 
-    hands_res = hands.process(rgb)
+    do_prediction = False
+    if results.multi_hand_landmarks and len(results.multi_hand_landmarks) >= 2:
+        hand1, hand2 = results.multi_hand_landmarks[:2]
 
-    top5_lines = None
-    if hands_res.multi_hand_landmarks:
-        hand = hands_res.multi_hand_landmarks[0]
-        mpDraw.draw_landmarks(img, hand, mpHands.HAND_CONNECTIONS)
+        # deschidere mâna 2
+        lm2 = hand2.landmark
+        thumb_tip = np.array([lm2[4].x, lm2[4].y])
+        pinky_tip = np.array([lm2[20].x, lm2[20].y])
+        dist = np.linalg.norm(thumb_tip - pinky_tip)
 
-        vect = extract_landmarks(hand)
-        vect = torch.tensor(vect, dtype=torch.float32).unsqueeze(0)
+        if dist > THUMB_PINKY_DIST:
+            do_prediction = True
 
-        with torch.no_grad():
-            print(vect.shape)
-            out = model(vect)
-            probs = torch.softmax(out, dim=1)
-            np_probs = probs[0].cpu().numpy()
-            prob_buffer.append(np_probs)
+    if do_prediction:
+        hand_vect = extract_landmarks(hand1)
+        seq_buffer.append(torch.tensor(hand_vect))
 
-            avg_probs = np.mean(prob_buffer, axis=0)
-            pred = int(np.argmax(avg_probs))
+        if len(seq_buffer) == SEQ_WINDOW:
+            batch = torch.stack(list(seq_buffer)).unsqueeze(0)  # (1, seq_len, input_size)
+            lengths = torch.tensor([SEQ_WINDOW])
 
-        if paused:
-            k = min(5, probs.numel())
-            vals, idxs = torch.topk(probs[0], k=k)
-            top5_lines = [
-                f"{i+1}. {id_to_class[idxs[i].item()]}: {vals[i].item()*100:.1f}%"
-                for i in range(k)
-            ]
+            with torch.no_grad():
+                out = dynamic_model(batch, lengths)
+                probs = torch.softmax(out, dim=1)
+                pred = int(torch.argmax(probs, dim=1).item())
+                letter = id_to_class[pred]
 
-        letter = id_to_class[pred]
+            cv.putText(img, f"DYNAMIC: {letter}", (10, 130),
+                       cv.FONT_HERSHEY_SIMPLEX, 2, (0, 0, 255), 3)
 
-        cv.putText(img, f"{letter}", (10, 130),
-               cv.FONT_HERSHEY_SIMPLEX, 2, (0, 255, 0), 3)
+    # desenăm mâinile
+    if results.multi_hand_landmarks:
+        for hand_landmarks in results.multi_hand_landmarks:
+            mpDraw.draw_landmarks(img, hand_landmarks, mpHands.HAND_CONNECTIONS)
 
-    if paused:
-        cv.putText(img, "PAUSED (press P to resume)", (10, 30),
-                   cv.FONT_HERSHEY_SIMPLEX, 0.7, (0, 255, 255), 2)
-        if top5_lines:
-            y = 60
-            for line in top5_lines:
-                cv.putText(img, line, (10, y),
-                           cv.FONT_HERSHEY_SIMPLEX, 0.7, (255, 255, 255), 2)
-                y += 26
-
-    now = time.time()
-    fps = 1 / (now - prev) if prev else 0
-    prev = now
-
-    cv.putText(img, str(int(fps)), (10, 70),
-               cv.FONT_HERSHEY_SIMPLEX, 1, (0, 0, 255), 2)
-
-    cv.imshow("DLMG_LSR", img)
-
+    cv.imshow("Dynamic LSR", img)
     key = cv.waitKey(1) & 0xFF
-    if key in (ord("p"), ord("P")):
-        paused = not paused
-    elif key == ord("q"):
+    if key == ord("q"):
         break
 
 cap.release()
