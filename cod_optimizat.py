@@ -52,15 +52,19 @@ def extract_landmarks(hand_landmarks):
     angle_thumb_palm = angle(v_thumb, v_palm)
 
     # ---- unghi cârlig ----
-    THUMB_CMC = lm[1]
+    THUMB_IP = lm[3]
 
     v1 = [
-        THUMB_MCP.x - THUMB_CMC.x,
-        THUMB_MCP.y - THUMB_CMC.y,
-        THUMB_MCP.z - THUMB_CMC.z
+        THUMB_IP.x - THUMB_MCP.x,
+        THUMB_IP.y - THUMB_MCP.y,
+        THUMB_IP.z - THUMB_MCP.z
     ]
 
-    v2 = v_thumb
+    v2 = [
+        THUMB_TIP.x - THUMB_MCP.x,
+        THUMB_TIP.y - THUMB_MCP.y,
+        THUMB_TIP.z - THUMB_MCP.z
+    ]
 
     angle_thumb_bend = angle(v1, v2)
 
