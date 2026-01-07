@@ -10,14 +10,6 @@ def angle(v1, v2):
     cos = np.dot(v1, v2) / (np.linalg.norm(v1) * np.linalg.norm(v2))
     return np.arccos(np.clip(cos, -1.0, 1.0))
 
-mp_hands = mp.solutions.hands
-hands = mp_hands.Hands(static_image_mode=True, max_num_hands=1)
-
-DATA_DIR = "photo_data"
-output_file = "data_all.json"
-
-dataset = []
-
 def extract_data(lm):
     WRIST = lm.landmark[0]
     THUMB_CMC = lm.landmark[1]
@@ -194,28 +186,37 @@ def extract_data(lm):
     all_data.extend(angles)
     return all_data
 
-for letter in os.listdir(DATA_DIR):
-    letter_path = os.path.join(DATA_DIR, letter)
-    if not os.path.isdir(letter_path):
-        continue
+def photo_to_vectors():
+    mp_hands = mp.solutions.hands
+    hands = mp_hands.Hands(static_image_mode=True, max_num_hands=1)
 
-    for img_name in os.listdir(letter_path):
-        img_path = os.path.join(letter_path, img_name)
-        img = cv.imread(img_path)
-        if img is None:
+    DATA_DIR = "photo_data"
+    output_file = "data_all.json"
+
+    dataset = []
+
+    for letter in os.listdir(DATA_DIR):
+        letter_path = os.path.join(DATA_DIR, letter)
+        if not os.path.isdir(letter_path):
             continue
 
-        imgRGB = cv.cvtColor(img, cv.COLOR_BGR2RGB)
-        res = hands.process(imgRGB)
+        for img_name in os.listdir(letter_path):
+            img_path = os.path.join(letter_path, img_name)
+            img = cv.imread(img_path)
+            if img is None:
+                continue
 
-        if not res.multi_hand_landmarks:
-            continue
+            imgRGB = cv.cvtColor(img, cv.COLOR_BGR2RGB)
+            res = hands.process(imgRGB)
 
-        lm = res.multi_hand_landmarks[0]
+            if not res.multi_hand_landmarks:
+                continue
 
-        all_data = extract_data(lm)
+            lm = res.multi_hand_landmarks[0]
 
-        dataset.append({"class": letter, "data": all_data})
+            all_data = extract_data(lm)
 
-with open(output_file, "w") as f:
-    json.dump(dataset, f, indent=4)
+            dataset.append({"class": letter, "data": all_data})
+
+    with open(output_file, "w") as f:
+        json.dump(dataset, f, indent=4)
