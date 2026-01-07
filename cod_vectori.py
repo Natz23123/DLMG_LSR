@@ -176,10 +176,26 @@ def extract_landmarks(hand_landmarks):
         MIDDLE_RING_SPREAD_ANGLE,
         RING_PINKY_SPREAD_ANGLE
     ]
+    scale = np.linalg.norm(
+        [
+            MIDDLE_MCP.x - WRIST.x,
+            MIDDLE_MCP.y - WRIST.y,
+            MIDDLE_MCP.z - WRIST.z,
+        ]
+    )
+
+    if scale < 1e-6:
+        scale = 1.0
 
     all_data = []
     for p in landmarks:
-        all_data.extend([p.x, p.y, p.z])
+        all_data.extend(
+            [
+                (p.x - WRIST.x) / scale,
+                (p.y - WRIST.y) / scale,
+                (p.z - WRIST.z) / scale,
+            ]
+        )
     for v in vect:
         all_data.extend(v)
     all_data.extend(angles)
