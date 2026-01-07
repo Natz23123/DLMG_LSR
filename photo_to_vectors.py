@@ -3,6 +3,15 @@ import os
 import mediapipe as mp
 import json
 import numpy as np
+import time
+
+def _format_seconds(seconds: float) -> str:
+    seconds = int(seconds)
+    m, s = divmod(seconds, 60)
+    h, m = divmod(m, 60)
+    if h:
+        return f"{h:d}h {m:02d}m {s:02d}s"
+    return f"{m:d}m {s:02d}s"
 
 def angle(v1, v2):
     v1 = np.array(v1)
@@ -195,21 +204,57 @@ def photo_to_vectors():
 
     dataset = []
 
-    for letter in os.listdir(DATA_DIR):
+    # Pre-compute total files to process for progress reporting
+    letters = [d for d in os.listdir(DATA_DIR) if os.path.isdir(os.path.join(DATA_DIR, d))]
+    total_files = 0
+    for letter in letters:
         letter_path = os.path.join(DATA_DIR, letter)
-        if not os.path.isdir(letter_path):
-            continue
+        try:
+            total_files += len(os.listdir(letter_path))
+        except Exception:
+            pass
 
+    processed = 0
+    started = time.time()
+    last_update = started
+
+    for letter in letters:
+        letter_path = os.path.join(DATA_DIR, letter)
         for img_name in os.listdir(letter_path):
             img_path = os.path.join(letter_path, img_name)
             img = cv.imread(img_path)
+            processed += 1
             if img is None:
+                # Update progress even for unreadable files
+                now = time.time()
+                if now - last_update >= 1 or processed == total_files:
+                    elapsed = now - started
+                    pct = (processed / total_files * 100) if total_files else 0
+                    avg = elapsed / processed if processed else 0
+                    remaining = (total_files - processed) * avg if total_files else 0
+                    print(
+                        f"[photo_to_vectors] {processed}/{total_files} ({pct:5.1f}%) | Elapsed: {_format_seconds(elapsed)} | ETA: {_format_seconds(remaining)}",
+                        flush=True,
+                    )
+                    last_update = now
                 continue
 
             imgRGB = cv.cvtColor(img, cv.COLOR_BGR2RGB)
             res = hands.process(imgRGB)
 
             if not res.multi_hand_landmarks:
+                # Update progress for images without detectable hands
+                now = time.time()
+                if now - last_update >= 1 or processed == total_files:
+                    elapsed = now - started
+                    pct = (processed / total_files * 100) if total_files else 0
+                    avg = elapsed / processed if processed else 0
+                    remaining = (total_files - processed) * avg if total_files else 0
+                    print(
+                        f"[photo_to_vectors] {processed}/{total_files} ({pct:5.1f}%) | Elapsed: {_format_seconds(elapsed)} | ETA: {_format_seconds(remaining)}",
+                        flush=True,
+                    )
+                    last_update = now
                 continue
 
             lm = res.multi_hand_landmarks[0]
@@ -218,5 +263,23 @@ def photo_to_vectors():
 
             dataset.append({"class": letter, "data": all_data})
 
+            # Regular progress update
+            now = time.time()
+            if now - last_update >= 1 or processed == total_files:
+                elapsed = now - started
+                pct = (processed / total_files * 100) if total_files else 0
+                avg = elapsed / processed if processed else 0
+                remaining = (total_files - processed) * avg if total_files else 0
+                print(
+                    f"[photo_to_vectors] {processed}/{total_files} ({pct:5.1f}%) | Elapsed: {_format_seconds(elapsed)} | ETA: {_format_seconds(remaining)} | Last: {letter}/{img_name}",
+                    flush=True,
+                )
+                last_update = now
+
     with open(output_file, "w") as f:
         json.dump(dataset, f, indent=4)
+    total_elapsed = time.time() - started
+    print(
+        f"[photo_to_vectors] Done. Saved {len(dataset)} vectors from {processed} files to '{output_file}'. Total time: {_format_seconds(total_elapsed)}",
+        flush=True,
+    )
