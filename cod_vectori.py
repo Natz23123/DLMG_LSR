@@ -5,6 +5,7 @@ import numpy as np
 import json
 from model_vectori import LandmarkClassifier
 import torch
+from collections import deque
 
 with open("data_all.json") as f:
     data = json.load(f)
@@ -220,6 +221,10 @@ mpDraw = mp.solutions.drawing_utils
 prev = 0
 paused = False
 frozen_img = None
+
+PROB_WINDOW = 7
+prob_buffer = deque(maxlen=PROB_WINDOW)
+
 while True:
     if not paused:
         ret, img = cap.read()
@@ -246,8 +251,11 @@ while True:
         with torch.no_grad():
             print(vect.shape)
             out = model(vect)
-            probs = torch.softmax(out, dim=1)
-            pred = probs.argmax(dim=1).item()
+            probs = torch.softmax(out, dim=1)[0].cpu().numpy()
+            prob_buffer.append(probs)
+
+            avg_probs = np.mean(prob_buffer, axis=0)
+            pred = int(np.argmax(avg_probs))
 
         if paused:
             k = min(5, probs.numel())
