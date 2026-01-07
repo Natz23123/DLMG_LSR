@@ -165,9 +165,9 @@ def extract_landmarks(hand_landmarks):
 
     THUMB_HOOK_ANGLE = angle(v3, v4)
     THUMB_INDEX_SPREAD_ANGLE = angle(v2, v5)
-    INDEX_MIDDLE_SPREAD_ANGLE = angle(v5, v9)
-    MIDDLE_RING_SPREAD_ANGLE = angle(v9, v13)
-    RING_PINKY_SPREAD_ANGLE = angle(v13, v17)
+    INDEX_MIDDLE_SPREAD_ANGLE = angle(v6, v10)
+    MIDDLE_RING_SPREAD_ANGLE = angle(v10, v14)
+    RING_PINKY_SPREAD_ANGLE = angle(v14, v18)
 
     angles = [
         THUMB_HOOK_ANGLE,
