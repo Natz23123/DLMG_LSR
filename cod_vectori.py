@@ -23,7 +23,6 @@ def angle(v1, v2):
     cos = np.dot(v1, v2) / (np.linalg.norm(v1) * np.linalg.norm(v2))
     return np.arccos(np.clip(cos, -1.0, 1.0))
 
-
 def extract_landmarks(hand_landmarks):
     lm = hand_landmarks.landmark
 
